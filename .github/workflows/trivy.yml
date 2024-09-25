@@ -1,0 +1,42 @@
+name: Trivy Scan
+
+on: [pull_request]
+
+jobs:
+  trivy-scan:
+    runs-on: ubuntu-latest
+    env:
+      NAMESPACE: ${{ secrets.dev_namespace_docker_hub }}
+      SERVICE_NAME: partner-onboarder
+      VERSION: latest  # Modify this as needed or set dynamically based on your versioning scheme
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Build Docker image
+        run: |
+          cd "${{ env.SERVICE_LOCATION }}"
+          docker build . --file Dockerfile --tag ${{ env.SERVICE_NAME }}:${{ env.VERSION }}
+
+      - name: Run Trivy scan
+        run: |
+          docker run --rm -v $(pwd):/root/.cache/ aquasec/trivy:latest image --format json -o trivy-report.json ${{ env.SERVICE_NAME }}:${{ env.VERSION }}
+
+      - name: Format Trivy report
+        run: |
+          cat trivy-report.json | jq '.Results[] | {Target, Vulnerabilities: .Vulnerabilities[] | {VulnerabilityID, PkgName, InstalledVersion, Severity}}' > formatted-report.json
+
+      - name: Post Trivy report to PR
+        uses: actions/github-script@v3
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('formatted-report.json', 'utf8');
+            const comment = `### Trivy Vulnerability Report\n\`\`\`json\n${report}\n\`\`\``;
+            github.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
