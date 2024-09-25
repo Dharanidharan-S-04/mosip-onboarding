@@ -19,9 +19,27 @@ jobs:
           cd "${{ env.SERVICE_LOCATION }}"
           docker build . --file Dockerfile --tag ${{ env.SERVICE_NAME }}:${{ env.VERSION }}
 
-      - name: Run Trivy scan
-        run: |
-          docker run --rm -v $(pwd):/root/.cache/ aquasec/trivy:latest image --format json -o trivy-report.json ${{ env.SERVICE_NAME }}:${{ env.VERSION }}
+      - name: Obtain template file
+        shell: bash
+        run: curl -o trivy-pr-comment.tpl https://raw.githubusercontent.com/domstolene/trivy-pr-report/main/trivy-pr-comment.tpl
+        
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.20.0
+        id: scan
+        with:
+          scan-type: 'fs'
+          image-ref: 'docker.io/${{ env.SERVICE_NAME }}:${{ env.VERSION }}'
+          format: 'template'
+          template: '@trivy-pr-comment.tpl'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+          output: 'trivy-report.json'
+          exit-code: 1
+          scanners: 'vuln'
+
+    #  - name: Run Trivy scan
+     #   run: |
+      #    docker run --rm -v $(pwd):/root/.cache/ aquasec/trivy:latest image --format json -o trivy-report.json ${{ env.SERVICE_NAME }}:${{ env.VERSION }}
 
       - name: Format Trivy report
         run: |
